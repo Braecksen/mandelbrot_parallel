@@ -123,18 +123,37 @@ def benchmark_parallel(pool, chunks, n_runs=3):
 
 if __name__ == "__main__":
     
-
     N = 1024
+    x_min, x_max = -2, 1
+    y_min, y_max = -1.5, 1.5
+    max_iter = 100
+    
+    mandelbrot_serial(N, x_min, x_max, y_min, y_max, max_iter)
 
-    chunks = build_chunks(
-        N, -2, 1, -1.5, 1.5, 100, os.cpu_count()
-    )
+     # serial 
+    t_serial, _ = benchmark(mandelbrot_serial, N, x_min, x_max, y_min, y_max, max_iter)
 
-    # create pool ONCE
-    with Pool(os.cpu_count()) as pool:
+    print(f"\nSerial time: {t_serial:.4f}s\n")
+    
+    
+    for p in range(1, os.cpu_count() + 1):
 
-        # warm-up 
-        pool.map(worker, chunks)
+        chunks = build_chunks(
+            N, x_min, x_max, y_min, y_max, max_iter, p
+        )
 
-        # benchmark 
-        median_time, result = benchmark_parallel(pool, chunks)
+        with Pool(p) as pool:
+
+            # warm-up (NOT timed)
+            pool.map(worker, chunks)
+
+            # benchmark
+            t_parallel, result = benchmark_parallel(pool, chunks)
+
+        speedup = t_serial / t_parallel
+        
+
+        (f"{p:2d} workers: {t_parallel:.3f}s, speedup={speedup:.2f}x, eff={speedup/p*100:.0f}%")
+        
+
+        
