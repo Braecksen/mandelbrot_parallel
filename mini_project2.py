@@ -3,6 +3,8 @@ from numba import njit
 import matplotlib.pyplot as plt
 import time
 import statistics
+import os
+from multiprocessing import Pool
 
 
 @njit
@@ -74,11 +76,65 @@ def benchmark(func, *args, n_runs=3):
 
     return median_t, result
 
-if __name__ == "__main__":
 
-    mandelbrot_serial(1024, -2, 1, -1.5, 1.5, 100)
+
+def worker(args):
+    return mandelbrot_chunk(*args)
+
+def mandelbrot_parallel(pool, chunks):
+    parts = pool.map(worker, chunks)
+    return np.vstack(parts)
+
+def build_chunks(N, x_min, x_max, y_min, y_max, max_iter, n_workers):
+
+    chunk_size = max(1, N // n_workers)
+
+    chunks = []
+    row = 0
+
+    while row < N:
+        row_end = min(row + chunk_size, N)
+
+        chunks.append((
+            row, row_end, N,
+            x_min, x_max, y_min, y_max, max_iter
+        ))
+
+        row = row_end
+
+    return chunks
+
+def benchmark_parallel(pool, chunks, n_runs=3):
+
+    times = []
+
+    for _ in range(n_runs):
+        t0 = time.perf_counter()
+
+        result = mandelbrot_parallel(pool, chunks)
+
+        times.append(time.perf_counter() - t0)
+
+    median_t = statistics.median(times)
+
+    print(f"Median: {median_t:.4f}s")
+
+    return median_t, result
+
+if __name__ == "__main__":
     
-    median_time, result = benchmark(
-        mandelbrot_serial,
-        1024, -2, 1, -1.5, 1.5, 100
+
+    N = 1024
+
+    chunks = build_chunks(
+        N, -2, 1, -1.5, 1.5, 100, os.cpu_count()
     )
+
+    # create pool ONCE
+    with Pool(os.cpu_count()) as pool:
+
+        # warm-up 
+        pool.map(worker, chunks)
+
+        # benchmark 
+        median_time, result = benchmark_parallel(pool, chunks)
